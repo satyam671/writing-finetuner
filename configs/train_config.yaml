@@ -1,0 +1,65 @@
+# writing-finetuner configuration
+# All hyperparameters in one place. Edit here, not in the scripts.
+
+# ─── Model ────────────────────────────────────────────────────────────────────
+model:
+  base_model: "mistralai/Mistral-7B-Instruct-v0.2"
+  torch_dtype: "bfloat16"          # Use float16 if your GPU doesn't support bf16
+  device_map: "auto"
+
+# ─── LoRA ─────────────────────────────────────────────────────────────────────
+lora:
+  r: 16                            # Rank. Higher = more capacity, more VRAM
+  alpha: 32                        # Scale factor. Convention: 2x rank
+  dropout: 0.05
+  bias: "none"
+  task_type: "CAUSAL_LM"
+  target_modules:                  # Mistral 7B attention projection layers
+    - "q_proj"
+    - "v_proj"
+
+# ─── Data ─────────────────────────────────────────────────────────────────────
+data:
+  train_file: "data/chunks/train.jsonl"
+  eval_file: "data/chunks/eval.jsonl"
+  train_eval_split: 0.90           # 90% train, 10% eval
+  max_seq_length: 512
+  chunk_overlap: 0.10              # 10% overlap between chunks
+
+# ─── Training ─────────────────────────────────────────────────────────────────
+training:
+  output_dir: "checkpoints"
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8  # Effective batch size = 4 * 8 = 32
+  learning_rate: 2.0e-4
+  weight_decay: 0.01
+  warmup_steps: 100
+  lr_scheduler_type: "cosine"
+  logging_steps: 50
+  eval_steps: 200
+  save_steps: 500
+  save_total_limit: 3             # Keep only last 3 checkpoints
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  greater_is_better: false
+  gradient_checkpointing: false   # Set true if VRAM < 20GB (slower training)
+  bf16: true
+  fp16: false
+  dataloader_num_workers: 4
+  seed: 42
+
+# ─── Probe ────────────────────────────────────────────────────────────────────
+probe:
+  results_dir: "probe_results"
+  checkpoint: "checkpoints/final"  # Which checkpoint to probe
+  max_new_tokens: 512
+  temperature: 0.7
+  do_sample: true
+  # Add your probe prompts here — novel situations not in your training corpus
+  prompts:
+    - "An ML model that performed well in staging is now producing degraded outputs in production. Walk through your diagnostic process."
+    - "A team is debating whether to use streaming or batch ingestion for a new customer event pipeline. Walk through the trade-offs."
+    - "The data team is being asked to adopt a new orchestration tool. What questions should they answer before committing?"
+    - "A stakeholder insists the model needs more data. You suspect the problem is feature quality, not volume. How do you make the case?"
+    - "You're asked to reduce ML pipeline latency by 40%. Where do you start?"
